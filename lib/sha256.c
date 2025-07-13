@@ -21,6 +21,7 @@
  * OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #include "flo-shani.h"
+#include "compat.c"
 
 #define ZERO_128            _mm_setzero_si128()
 #define LOAD_128(X)         _mm_loadu_si128((__m128i*) X)
@@ -390,3 +391,9 @@ void sha256_ ## NUM ## w(         \
 
 define_sha256(4,128)
 define_sha256(8,256)
+
+void sha256_final(u32 res[8], const u8 *msg, size_t len) {
+  unsigned char digest[32];
+  sha256_update_shani(msg, (long unsigned int)len, digest);
+  for (int i = 0; i < 8; ++i) res[i] = ((u32 *)digest)[i];
+}
