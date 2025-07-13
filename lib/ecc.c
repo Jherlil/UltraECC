@@ -10,16 +10,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__AVX2__) || defined(__BMI2__) || defined(__ADX__)
+#include <immintrin.h>
+#endif
 
 #include "compat.c"
 #define GLOBAL static const
 
 INLINE u64 umul128(const u64 a, const u64 b, u64 *hi) {
+#if defined(__BMI2__)
+  return _mulx_u64(a, b, hi);
+#else
   // https://stackoverflow.com/a/50958815
   // https://botan.randombit.net/doxygen/mul128_8h_source.html
   u128 t = (u128)a * b;
   *hi = t >> 64;
   return t;
+#endif
 }
 
 // MARK: Field Element
@@ -42,16 +49,43 @@ INLINE void fe_print(const char *label, const fe a) {
   printf("%s: %016llx %016llx %016llx %016llx\n", label, a[3], a[2], a[1], a[0]);
 }
 
-INLINE bool fe_iszero(const fe r) { return r[0] == 0 && r[1] == 0 && r[2] == 0 && r[3] == 0; }
-INLINE void fe_clone(fe r, const fe a) { memcpy(r, a, sizeof(fe)); }
+INLINE bool fe_iszero(const fe r) {
+#ifdef __AVX2__
+  __m256i v = _mm256_loadu_si256((const __m256i *)r);
+  return _mm256_testz_si256(v, v);
+#else
+  return r[0] == 0 && r[1] == 0 && r[2] == 0 && r[3] == 0;
+#endif
+}
+
+INLINE void fe_clone(fe r, const fe a) {
+#ifdef __AVX2__
+  _mm256_storeu_si256((__m256i *)r, _mm256_loadu_si256((const __m256i *)a));
+#else
+  memcpy(r, a, sizeof(fe));
+#endif
+}
+
 INLINE void fe_set64(fe r, const u64 a) {
+#ifdef __AVX2__
+  __m256i v = _mm256_setzero_si256();
+  v = _mm256_insert_epi64(v, (long long)a, 0);
+  _mm256_storeu_si256((__m256i *)r, v);
+#else
   memset(r, 0, sizeof(fe));
   r[0] = a;
+#endif
 }
 
 size_t fe_bitlen(const fe a) {
   for (int i = 3; i >= 0; --i) {
-    if (a[i]) return 64 * i + (64 - __builtin_clzll(a[i]));
+    if (a[i]) {
+#if defined(__BMI1__)
+      return 64 * i + (63 - _lzcnt_u64(a[i]));
+#else
+      return 64 * i + (64 - __builtin_clzll(a[i]));
+#endif
+    }
   }
   return 0;
 }
@@ -569,10 +603,16 @@ GLOBAL pe G2 = {
 };
 
 INLINE void pe_clone(pe *r, const pe *a) {
+#ifdef __AVX2__
+  _mm256_storeu_si256((__m256i *)r->x, _mm256_loadu_si256((const __m256i *)a->x));
+  _mm256_storeu_si256((__m256i *)r->y, _mm256_loadu_si256((const __m256i *)a->y));
+  _mm256_storeu_si256((__m256i *)r->z, _mm256_loadu_si256((const __m256i *)a->z));
+#else
   memcpy(r, a, sizeof(pe));
   // fe_clone(r->x, a->x);
   // fe_clone(r->y, a->y);
   // fe_clone(r->z, a->z);
+#endif
 }
 
 // https://en.wikibooks.org/wiki/Cryptography/Prime_Curve/Affine_Coordinates

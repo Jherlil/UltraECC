@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdalign.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 #else
   #include <fcntl.h>
   #include <termios.h>
+  #include <sys/select.h>
 #endif
 
 typedef char hex40[41]; // rmd160 hex string

@@ -2,6 +2,9 @@
 
 #define USE_BUILTIN 1
 #define HAS_BUILTIN(fn) (USE_BUILTIN && __has_builtin(fn))
+#if defined(__ADX__) || defined(__BMI2__) || defined(__BMI__)
+#include <immintrin.h>
+#endif
 
 typedef __uint128_t u128;
 typedef unsigned long long u64;
@@ -28,34 +31,42 @@ typedef unsigned char u8;
 // https://clang.llvm.org/docs/LanguageExtensions.html#:~:text=__builtin_addcll
 // https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html#:~:text=__builtin_uaddll_overflow
 
-#if HAS_BUILTIN(__builtin_addcll)
-  #define addc64(x, y, carryin, carryout) __builtin_addcll(x, y, carryin, carryout)
+INLINE u64 addc64(u64 x, u64 y, u64 carryin, u64 *carryout) {
+#if defined(__ADX__)
+  unsigned long long out;
+  unsigned char c = _addcarry_u64((unsigned char)carryin, x, y, &out);
+  *carryout = c;
+  return out;
+#elif HAS_BUILTIN(__builtin_addcll)
+  return __builtin_addcll(x, y, carryin, carryout);
 #else
-  #define addc64(x, y, carryin, carryout)                                                          \
-    ({                                                                                             \
-      u64 rs;                                                                                      \
-      bool overflow1 = __builtin_uaddll_overflow(x, y, &rs);                                       \
-      bool overflow2 = __builtin_uaddll_overflow(rs, carryin, &rs);                                \
-      *(carryout) = (overflow1 || overflow2) ? 1 : 0;                                              \
-      rs;                                                                                          \
-    })
+  u64 rs;
+  bool overflow1 = __builtin_uaddll_overflow(x, y, &rs);
+  bool overflow2 = __builtin_uaddll_overflow(rs, carryin, &rs);
+  *carryout = (overflow1 || overflow2) ? 1 : 0;
+  return rs;
 #endif
+}
 
 // https://clang.llvm.org/docs/LanguageExtensions.html#:~:text=__builtin_subcll
 // https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html#:~:text=__builtin_usubll_overflow
 
-#if HAS_BUILTIN(__builtin_subcll)
-  #define subc64(x, y, carryin, carryout) __builtin_subcll(x, y, carryin, carryout)
+INLINE u64 subc64(u64 x, u64 y, u64 carryin, u64 *carryout) {
+#if defined(__ADX__)
+  unsigned long long out;
+  unsigned char c = _subborrow_u64((unsigned char)carryin, x, y, &out);
+  *carryout = c;
+  return out;
+#elif HAS_BUILTIN(__builtin_subcll)
+  return __builtin_subcll(x, y, carryin, carryout);
 #else
-  #define subc64(x, y, carryin, carryout)                                                          \
-    ({                                                                                             \
-      u64 rs;                                                                                      \
-      bool underflow1 = __builtin_usubll_overflow(x, y, &rs);                                      \
-      bool underflow2 = __builtin_usubll_overflow(rs, carryin, &rs);                               \
-      *(carryout) = (underflow1 || underflow2) ? 1 : 0;                                            \
-      rs;                                                                                          \
-    })
+  u64 rs;
+  bool underflow1 = __builtin_usubll_overflow(x, y, &rs);
+  bool underflow2 = __builtin_usubll_overflow(rs, carryin, &rs);
+  *carryout = (underflow1 || underflow2) ? 1 : 0;
+  return rs;
 #endif
+}
 
 // Other builtins
 
